@@ -774,6 +774,35 @@ def test_parameter_source(runner, option_args, invoke_args, expect):
     assert rv.return_value == expect
 
 
+@pytest.mark.parametrize(
+    ("args", "forwarded"),
+    [
+        pytest.param([], ParameterSource.DEFAULT, id="default"),
+        pytest.param(["--count", "5"], ParameterSource.COMMANDLINE, id="commandline"),
+    ],
+)
+def test_parameter_source_invoke_forward(runner, args, forwarded):
+    sources = []
+
+    @click.command()
+    @click.option("--count", default=1)
+    @click.pass_context
+    def other(ctx, count):
+        sources.append(ctx.get_parameter_source("count"))
+
+    @click.command()
+    @click.option("--count", default=1)
+    @click.pass_context
+    def cli(ctx, count):
+        ctx.forward(other)
+        ctx.invoke(other)
+        ctx.invoke(other, count=42)
+
+    rv = runner.invoke(cli, args)
+    assert not rv.exception
+    assert sources == [forwarded, ParameterSource.DEFAULT, None]
+
+
 def test_propagate_opt_prefixes():
     parent = click.Context(click.Command("test"))
     parent._opt_prefixes = {"-", "--", "!"}

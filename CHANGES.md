@@ -46,6 +46,10 @@ Unreleased
 - A command's short help no longer stops at an abbreviation such as `vs.` or `e.g.`
   inside the first sentence. A period ends the sentence only when it closes the text
   or the next word does not start in lowercase. {pr}`3865`
+- {meth}`Context.get_parameter_source` reports `DEFAULT` for parameters that
+  {meth}`Context.invoke` fills in from their default, and the caller's source for
+  parameters that {meth}`Context.forward` passes on. It returned `None` for both.
+  {issue}`2753`
 
 ## Version 8.5.0
 

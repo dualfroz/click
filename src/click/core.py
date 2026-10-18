@@ -905,39 +905,54 @@ class Context:
             A new context is created, and missing arguments use default values.
         """
         if isinstance(callback, Command):
-            other_cmd = callback
+            return self._invoke_command(callback, {}, *args, **kwargs)
 
-            if other_cmd.callback is None:
-                raise TypeError(
-                    "The given command does not have a callback that can be invoked."
-                )
-            else:
-                callback = t.cast("t.Callable[..., V]", other_cmd.callback)
+        with augment_usage_errors(self), self:
+            return callback(*args, **kwargs)
 
-            ctx = self._make_sub_context(other_cmd)
+    def _invoke_command(
+        self,
+        other_cmd: Command,
+        sources: dict[str, ParameterSource],
+        /,
+        *args: t.Any,
+        **kwargs: t.Any,
+    ) -> t.Any:
+        """Invoke a command in a new sub-context, filling in defaults for
+        missing parameters. ``sources`` are recorded in the sub-context for
+        values that were not filled in.
 
-            for param in other_cmd.params:
-                if param.name not in kwargs and param.expose_value:
-                    default_value = param.get_default(ctx)
-                    # We explicitly hide the :attr:`UNSET` value to the user, as we
-                    # choose to make it an implementation detail. And because ``invoke``
-                    # has been designed as part of Click public API, we return ``None``
-                    # instead. Refs:
-                    # https://github.com/pallets/click/issues/3066
-                    # https://github.com/pallets/click/issues/3065
-                    # https://github.com/pallets/click/pull/3068
-                    if default_value is UNSET:
-                        default_value = None
-                    kwargs[param.name] = param.type_cast_value(ctx, default_value)
+        :meta private:
+        """
+        if other_cmd.callback is None:
+            raise TypeError(
+                "The given command does not have a callback that can be invoked."
+            )
 
-            # Track all kwargs as params, so that forward() will pass
-            # them on in subsequent calls.
-            ctx.params.update(kwargs)
-        else:
-            ctx = self
+        ctx = self._make_sub_context(other_cmd)
+        ctx._parameter_source.update(sources)
+
+        for param in other_cmd.params:
+            if param.name not in kwargs and param.expose_value:
+                default_value = param.get_default(ctx)
+                # We explicitly hide the :attr:`UNSET` value to the user, as we
+                # choose to make it an implementation detail. And because ``invoke``
+                # has been designed as part of Click public API, we return ``None``
+                # instead. Refs:
+                # https://github.com/pallets/click/issues/3066
+                # https://github.com/pallets/click/issues/3065
+                # https://github.com/pallets/click/pull/3068
+                if default_value is UNSET:
+                    default_value = None
+                kwargs[param.name] = param.type_cast_value(ctx, default_value)
+                ctx.set_parameter_source(param.name, ParameterSource.DEFAULT)
+
+        # Track all kwargs as params, so that forward() will pass
+        # them on in subsequent calls.
+        ctx.params.update(kwargs)
 
         with augment_usage_errors(self), ctx:
-            return callback(*args, **kwargs)
+            return other_cmd.callback(*args, **kwargs)
 
     def forward(self, cmd: Command, /, *args: t.Any, **kwargs: t.Any) -> t.Any:
         """Similar to :meth:`invoke` but fills in default keyword
@@ -952,11 +967,16 @@ class Context:
         if not isinstance(cmd, Command):
             raise TypeError("Callback is not a command.")
 
+        sources = {}
+
         for param in self.params:
             if param not in kwargs:
                 kwargs[param] = self.params[param]
 
-        return self.invoke(cmd, *args, **kwargs)
+                if param in self._parameter_source:
+                    sources[param] = self._parameter_source[param]
+
+        return self._invoke_command(cmd, sources, *args, **kwargs)
 
     def set_parameter_source(self, name: str, source: ParameterSource) -> None:
         """Set the source of a parameter. This indicates the location
