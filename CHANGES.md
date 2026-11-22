@@ -22,6 +22,9 @@ Unreleased
 - With `echo_stdin=True`, {class}`CliRunner` echoes the `\x04` and `\x1a`
   `<stdin>` bytes to `<stdout>` as `^D` and `^Z`, and no longer passes them to
   the command. {pr}`3878`
+- With `show_envvar=True` and `auto_envvar_prefix`, {meth}`Option.get_error_hint`
+  now includes the auto-generated environment variable name in error messages.
+  {issue}`3914`
 
 ## Version 8.5.1
 
